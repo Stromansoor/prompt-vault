@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Prompt Vault</title>
+    
+    <script>
+      // 1. Inline Manifest
+      const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><rect width="100" height="100" rx="20" fill="#09090b"/><text x="50%" y="50%" font-family="monospace" font-size="40" fill="#10b981" font-weight="bold" text-anchor="middle" dominant-baseline="central">&gt;_</text></svg>`;
+      const encodedIcon = btoa(svgIcon);
+      const iconDataUri = `data:image/svg+xml;base64,${encodedIcon}`;
+
+      const manifest = {
+        name: "Prompt Vault",
+        short_name: "PromptVault",
+        start_url: ".",
+        display: "standalone",
+        background_color: "#09090b",
+        theme_color: "#09090b",
+        icons: [
+          {
+            src: iconDataUri,
+            sizes: "192x192 512x512",
+            type: "image/svg+xml",
+            purpose: "any maskable"
+          }
+        ]
+      };
+
+      const manifestString = JSON.stringify(manifest);
+      const manifestDataUri = `data:application/manifest+json;charset=utf-8,${encodeURIComponent(manifestString)}`;
+      
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = manifestDataUri;
+      document.head.appendChild(link);
+
+      // 2. Inline Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          const swCode = "self.addEventListener('fetch', (e) => {});";
+          const blob = new Blob([swCode], { type: 'application/javascript' });
+          const url = URL.createObjectURL(blob);
+          navigator.serviceWorker.register(url)
+            .then(reg => console.log('Service Worker registered'))
+            .catch(err => console.log('Service Worker registration failed: ', err));
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

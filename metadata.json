@@ -1,0 +1,5 @@
+{
+  "name": "Prompt Vault",
+  "description": "A high-performance Prompt Vault app optimized for mobile and foldable screens, featuring local storage, search, and a dual-pane layout.",
+  "requestFramePermissions": []
+}
