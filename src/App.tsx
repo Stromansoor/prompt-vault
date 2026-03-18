@@ -745,6 +745,7 @@ export default function App() {
             History
           </button>
           <div className="my-2 border-t border-zinc-200 dark:border-zinc-800/50"></div>
+          <div className="px-4 py-2 mt-4 mb-1 text-xs font-bold text-zinc-500 uppercase tracking-wider">Tags</div>
           {allTagsWithCounts.map(({ name: tag, count }) => (
             <div key={tag} className="group relative flex items-center">
               <button

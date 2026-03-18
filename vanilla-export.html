@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Prompt Vault - Professional</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = { 
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        zinc: { 950: '#09090b' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .variable-tag {
+            background-color: rgba(99, 102, 241, 0.15);
+            color: #6366f1;
+            padding: 0 4px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+        .dark .variable-tag {
+            background-color: rgba(129, 140, 248, 0.2);
+            color: #818cf8;
+        }
+
+        /* Swipe Animations */
+        .swipe-container {
+            position: relative;
+            overflow: hidden;
+            touch-action: pan-y;
+        }
+        .swipe-content {
+            transition: transform 0.2s ease-out;
+            background: inherit;
+            position: relative;
+            z-index: 10;
+        }
+        .swipe-action {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ef4444;
+            color: white;
+            z-index: 5;
+        }
+
+        /* Drawer Transitions */
+        #nav-drawer {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #nav-overlay {
+            transition: opacity 0.3s ease;
+        }
+        
+        /* Detail View Slide-in for Mobile */
+        @media (max-width: 767px) {
+            #detail-view-container {
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                transform: translateX(100%);
+            }
+            #detail-view-container.active {
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 h-screen flex overflow-hidden">
+
+    <!-- 1. THE NAV DRAWER (Categories) -->
+    <div id="nav-overlay" onclick="toggleNav(false)" class="fixed inset-0 bg-zinc-950/60 backdrop-blur-sm z-[40] opacity-0 pointer-events-none md:hidden"></div>
+    <aside id="nav-drawer" class="fixed md:relative inset-y-0 left-0 w-72 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-[50] -translate-x-full md:translate-x-0 flex flex-col shrink-0">
+        <div class="p-6 flex items-center justify-between">
+            <h2 class="text-xs font-bold text-zinc-400 uppercase tracking-[0.2em]">Categories</h2>
+            <button onclick="toggleNav(false)" class="md:hidden p-2 text-zinc-400"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        
+        <nav class="flex-1 overflow-y-auto no-scrollbar px-3 space-y-1">
+            <button onclick="setViewMode('all')" id="nav-all" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all">
+                <i data-lucide="layout-grid" class="w-4 h-4"></i> All Prompts
+            </button>
+            <button onclick="setViewMode('favorites')" id="nav-favorites" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all">
+                <i data-lucide="star" class="w-4 h-4"></i> Favorites
+            </button>
+            
+            <div class="pt-6 pb-2 px-4">
+                <h3 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Tags</h3>
+            </div>
+            <div id="tag-list" class="space-y-1">
+                <!-- Tags injected here -->
+            </div>
+        </nav>
+
+        <div class="p-4 border-t border-zinc-100 dark:border-zinc-800 space-y-1">
+            <button onclick="setViewMode('deleted')" id="nav-deleted" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-zinc-500 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-500">
+                <i data-lucide="trash-2" class="w-4 h-4"></i> Trash
+            </button>
+            <button onclick="openSettings()" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                <i data-lucide="settings" class="w-4 h-4"></i> Settings
+            </button>
+        </div>
+    </aside>
+
+    <!-- 2. THE PROMPT LIST COLUMN -->
+    <section id="list-column" class="w-full md:w-96 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 flex flex-col shrink-0 relative z-10">
+        <header class="p-6 pb-4 flex items-center justify-between bg-zinc-50/80 dark:bg-zinc-950/80 backdrop-blur-md sticky top-0 z-20">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleNav(true)" class="p-2 -ml-2 text-zinc-500 md:hidden"><i data-lucide="menu" class="w-6 h-6"></i></button>
+                <h1 class="text-2xl font-bold tracking-tight">Vault</h1>
+            </div>
+            <button onclick="createNew()" class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 active:scale-95">
+                <i data-lucide="plus" class="w-5 h-5"></i>
+            </button>
+        </header>
+
+        <div class="px-6 pb-4 space-y-4">
+            <div class="relative group">
+                <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-indigo-500 transition-colors"></i>
+                <input type="text" id="search-input" oninput="handleSearch(this.value)" placeholder="Search prompts..." class="w-full pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm">
+            </div>
+            <div class="flex items-center justify-between px-1">
+                <span id="list-count" class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">0 Prompts</span>
+                <button onclick="toggleSort()" class="flex items-center gap-1.5 text-[10px] font-bold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors uppercase tracking-widest">
+                    Sort <i data-lucide="arrow-up-down" class="w-3 h-3"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="prompt-list" class="flex-1 overflow-y-auto no-scrollbar px-4 pb-8 space-y-3">
+            <!-- Cards injected here -->
+        </div>
+    </section>
+
+    <!-- 3. CONTENT AREA (Detail / Editor) -->
+    <main id="detail-view-container" class="fixed md:relative inset-0 bg-zinc-50 dark:bg-zinc-950 z-[60] md:z-0 flex flex-col flex-1 overflow-hidden">
+        
+        <!-- Empty State -->
+        <div id="empty-state" class="flex-1 flex flex-col items-center justify-center text-zinc-400 p-8 text-center">
+            <div class="w-24 h-24 bg-zinc-100 dark:bg-zinc-900 rounded-full flex items-center justify-center mb-6">
+                <i data-lucide="copy" class="w-10 h-10 opacity-20"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-zinc-800 dark:text-zinc-200 mb-2">No Prompt Selected</h2>
+            <p class="max-w-xs text-zinc-500 dark:text-zinc-500">Select a prompt from the list to view details or create a new one.</p>
+        </div>
+
+        <!-- Detail View -->
+        <div id="detail-view" class="hidden flex-col h-full overflow-hidden">
+            <header class="p-4 sm:p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-white dark:bg-zinc-900 shrink-0">
+                <div class="flex items-center gap-4">
+                    <button onclick="closeDetail()" class="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors md:hidden"><i data-lucide="chevron-left" class="w-6 h-6"></i></button>
+                    <div id="detail-fav-btn"></div>
+                </div>
+                <div class="flex gap-2">
+                    <button id="detail-delete-btn" class="p-2.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                    <button onclick="editCurrent()" class="p-2.5 text-zinc-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-full transition-all"><i data-lucide="pencil" class="w-5 h-5"></i></button>
+                    <button onclick="copyCurrent()" class="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-full text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 active:scale-95 ml-2">
+                        <i data-lucide="copy" class="w-4 h-4"></i> Copy
+                    </button>
+                </div>
+            </header>
+            <div class="flex-1 overflow-y-auto p-6 sm:p-12 space-y-8 max-w-4xl mx-auto w-full no-scrollbar">
+                <div class="space-y-4">
+                    <h2 id="detail-title" class="text-4xl sm:text-5xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight leading-tight"></h2>
+                    <div id="detail-tag-container" class="flex flex-wrap gap-2"></div>
+                </div>
+                <div id="detail-body" class="text-xl leading-relaxed text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap"></div>
+            </div>
+        </div>
+
+        <!-- Editor View -->
+        <div id="editor-view" class="hidden flex-col h-full overflow-hidden bg-white dark:bg-zinc-900">
+            <header class="p-4 sm:p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-4">
+                    <button onclick="handleCancelEdit()" class="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors md:hidden"><i data-lucide="chevron-left" class="w-6 h-6"></i></button>
+                    <h2 id="editor-mode-title" class="text-xl font-bold">New Prompt</h2>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="handleCancelEdit()" class="px-5 py-2 text-sm font-bold text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors">Cancel</button>
+                    <button onclick="savePrompt()" class="px-6 py-2 bg-indigo-600 text-white rounded-full text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 active:scale-95">Save</button>
+                </div>
+            </header>
+            <div class="flex-1 overflow-y-auto p-6 sm:p-12 space-y-10 max-w-4xl mx-auto w-full no-scrollbar">
+                <input type="text" id="edit-title" oninput="markDirty()" placeholder="Enter a title..." class="w-full text-4xl sm:text-5xl font-bold bg-transparent border-none outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-100 dark:placeholder:text-zinc-800">
+                
+                <div class="space-y-4">
+                    <label class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Tags</label>
+                    <div class="flex flex-wrap gap-2 items-center p-4 bg-zinc-50 dark:bg-zinc-950 rounded-3xl border border-zinc-200 dark:border-zinc-800">
+                        <div id="edit-tag-container" class="flex flex-wrap gap-2"></div>
+                        <input type="text" id="tag-input" placeholder="Add tag..." class="bg-transparent border-none outline-none text-sm min-w-[120px] flex-1">
+                        <button onclick="addTagFromInput()" class="p-2 bg-zinc-200 dark:bg-zinc-800 rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
+
+                <div class="space-y-4 flex-1 flex flex-col min-h-[400px]">
+                    <label class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Prompt Body</label>
+                    <textarea id="edit-body" oninput="markDirty()" placeholder="Write your prompt here... use [brackets] for variables." class="flex-1 w-full bg-transparent border-none outline-none resize-none text-xl leading-relaxed text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-100 dark:placeholder:text-zinc-800"></textarea>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- MODALS -->
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-zinc-950/60 backdrop-blur-sm hidden items-center justify-center z-[100] p-4">
+        <div class="bg-white dark:bg-zinc-900 rounded-[3rem] w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div class="p-8 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
+                <h3 class="text-2xl font-bold">Settings</h3>
+                <button onclick="closeSettings()" class="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div class="p-8 space-y-8 no-scrollbar overflow-y-auto max-h-[70vh]">
+                <div class="space-y-4">
+                    <h4 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Appearance</h4>
+                    <div class="flex justify-between items-center">
+                        <span class="font-medium">Dark Mode</span>
+                        <button onclick="toggleDark()" id="btn-dark-toggle" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors bg-zinc-200 dark:bg-indigo-600">
+                            <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1 dark:translate-x-6"></span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <h4 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Workflow</h4>
+                    <div class="flex justify-between items-center">
+                        <span class="font-medium text-sm">Auto-Close on Copy</span>
+                        <button onclick="toggleSetting('autoCloseOnCopy')" id="btn-autoclose-toggle" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors bg-zinc-200">
+                            <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                        </button>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="font-medium text-sm">Include Title on Copy</span>
+                        <button onclick="toggleSetting('includeTitleOnCopy')" id="btn-includetitle-toggle" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors bg-zinc-200">
+                            <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <h4 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Data Portability</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="exportCSV()" class="flex items-center justify-center gap-2 py-4 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-2xl font-bold text-xs transition-colors"><i data-lucide="download" class="w-4 h-4"></i> Export</button>
+                        <button onclick="document.getElementById('csv-file').click()" class="flex items-center justify-center gap-2 py-4 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-2xl font-bold text-xs transition-colors"><i data-lucide="upload" class="w-4 h-4"></i> Import</button>
+                        <input type="file" id="csv-file" accept=".csv" onchange="importCSV(this)" class="hidden">
+                    </div>
+                </div>
+                
+                <div class="pt-6 border-t border-zinc-100 dark:border-zinc-800">
+                    <button onclick="openFactoryReset()" class="w-full py-4 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 text-red-500 rounded-2xl font-bold flex justify-center items-center gap-2 transition-colors"><i data-lucide="alert-triangle" class="w-5 h-5"></i> Factory Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Discard Modal -->
+    <div id="discard-modal" class="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm hidden items-center justify-center z-[110] p-4">
+        <div class="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl p-8 text-center">
+            <div class="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-6"><i data-lucide="alert-circle" class="w-8 h-8"></i></div>
+            <h3 class="text-2xl font-bold mb-2">Discard changes?</h3>
+            <p class="text-zinc-500 dark:text-zinc-400 mb-8">You have unsaved changes. Are you sure you want to discard them?</p>
+            <div class="flex flex-col gap-3">
+                <button onclick="closeDiscardModal()" class="w-full py-4 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full font-bold transition-colors">Keep Editing</button>
+                <button onclick="confirmDiscard()" class="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold transition-colors">Discard Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset Modal -->
+    <div id="reset-modal" class="fixed inset-0 bg-zinc-950/90 backdrop-blur-md hidden items-center justify-center z-[110] p-4">
+        <div class="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl p-8 text-center">
+            <div class="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6"><i data-lucide="alert-triangle" class="w-8 h-8"></i></div>
+            <h3 class="text-2xl font-bold mb-2">Factory Reset</h3>
+            <p class="text-zinc-500 dark:text-zinc-400 mb-6 text-sm">This will permanently delete all data. Type <span class="text-red-500 font-bold">DELETE</span> below.</p>
+            <input type="text" id="reset-input" onkeyup="checkResetInput()" placeholder="DELETE" class="w-full p-4 rounded-2xl bg-zinc-100 dark:bg-zinc-800 border-2 border-transparent focus:border-red-500 outline-none mb-8 text-center font-black tracking-widest uppercase">
+            <div class="flex gap-3">
+                <button onclick="closeFactoryReset()" class="flex-1 py-4 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full font-bold transition-colors">Cancel</button>
+                <button id="btn-confirm-reset" onclick="executeReset()" disabled class="flex-1 py-4 bg-red-500/30 text-white rounded-full font-bold transition-colors cursor-not-allowed">Reset All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-8 py-4 rounded-2xl shadow-2xl z-[200] opacity-0 pointer-events-none transition-all duration-300 translate-y-4 font-bold text-sm">
+        Copied to clipboard!
+    </div>
+
+    <script>
+        // --- State ---
+        let prompts = JSON.parse(localStorage.getItem('prompt_vault_data') || '[]');
+        let settings = JSON.parse(localStorage.getItem('prompt_vault_settings') || '{"autoCloseOnCopy":false,"includeTitleOnCopy":false}');
+        let isDarkMode = localStorage.getItem('prompt_vault_theme') !== 'light';
+        let selectedId = null;
+        let viewMode = 'all'; 
+        let searchQuery = '';
+        let isDirty = false;
+        let editTags = [];
+        let sortOrder = 'desc';
+
+        // --- DOM ---
+        const elList = document.getElementById('prompt-list');
+        const elTagList = document.getElementById('tag-list');
+        const elEmpty = document.getElementById('empty-state');
+        const elEditor = document.getElementById('editor-view');
+        const elDetail = document.getElementById('detail-view');
+        const elNavDrawer = document.getElementById('nav-drawer');
+        const elNavOverlay = document.getElementById('nav-overlay');
+        const elDetailContainer = document.getElementById('detail-view-container');
+        const elToast = document.getElementById('toast');
+
+        // --- Init ---
+        function init() {
+            applyTheme();
+            updateSettingsUI();
+            renderSidebarTags();
+            renderList();
+            lucide.createIcons();
+            
+            document.getElementById('tag-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); addTagFromInput(); }
+            });
+        }
+
+        function applyTheme() {
+            if (isDarkMode) document.documentElement.classList.add('dark');
+            else document.documentElement.classList.remove('dark');
+            localStorage.setItem('prompt_vault_theme', isDarkMode ? 'dark' : 'light');
+            const btn = document.getElementById('btn-dark-toggle');
+            const dot = btn.querySelector('span');
+            if (isDarkMode) { btn.classList.add('bg-indigo-600'); dot.classList.add('translate-x-6'); dot.classList.remove('translate-x-1'); }
+            else { btn.classList.remove('bg-indigo-600'); dot.classList.remove('translate-x-6'); dot.classList.add('translate-x-1'); }
+        }
+
+        function updateSettingsUI() {
+            const updateToggle = (id, val) => {
+                const btn = document.getElementById(id);
+                const dot = btn.querySelector('span');
+                if (val) { btn.classList.add('bg-indigo-600'); dot.classList.add('translate-x-6'); dot.classList.remove('translate-x-1'); }
+                else { btn.classList.remove('bg-indigo-600'); dot.classList.remove('translate-x-6'); dot.classList.add('translate-x-1'); }
+            };
+            updateToggle('btn-autoclose-toggle', settings.autoCloseOnCopy);
+            updateToggle('btn-includetitle-toggle', settings.includeTitleOnCopy);
+        }
+
+        // --- Core Logic ---
+        function getFilteredPrompts() {
+            let filtered = prompts;
+            if (viewMode === 'deleted') filtered = filtered.filter(p => p.isDeleted);
+            else {
+                filtered = filtered.filter(p => !p.isDeleted);
+                if (viewMode === 'favorites') filtered = filtered.filter(p => p.isFavorite);
+                else if (viewMode.startsWith('tag:')) {
+                    const tag = viewMode.split(':')[1];
+                    filtered = filtered.filter(p => p.tags && p.tags.includes(tag));
+                }
+            }
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                filtered = filtered.filter(p => p.title.toLowerCase().includes(q) || p.body.toLowerCase().includes(q) || (p.tags && p.tags.some(t => t.toLowerCase().includes(q))));
+            }
+            return filtered.sort((a, b) => {
+                const timeA = a.updatedAt || a.id;
+                const timeB = b.updatedAt || b.id;
+                return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+            });
+        }
+
+        function renderSidebarTags() {
+            const allTags = new Set();
+            prompts.filter(p => !p.isDeleted).forEach(p => { if (p.tags) p.tags.forEach(t => allTags.add(t)); });
+            elTagList.innerHTML = '';
+            Array.from(allTags).sort().forEach(tag => {
+                const isActive = viewMode === `tag:${tag}`;
+                const btn = document.createElement('button');
+                btn.onclick = () => setViewMode(`tag:${tag}`);
+                btn.className = `w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-semibold transition-all ${isActive ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`;
+                btn.innerHTML = `
+                    <div class="flex items-center gap-3"><i data-lucide="tag" class="w-3.5 h-3.5"></i><span>${tag}</span></div>
+                    <span class="text-[10px] opacity-50">${prompts.filter(p => !p.isDeleted && p.tags && p.tags.includes(tag)).length}</span>
+                `;
+                elTagList.appendChild(btn);
+            });
+            lucide.createIcons();
+        }
+
+        function renderList() {
+            const filtered = getFilteredPrompts();
+            document.getElementById('list-count').textContent = `${filtered.length} Prompts`;
+            elList.innerHTML = '';
+            filtered.forEach(p => elList.appendChild(createSwipeableCard(p)));
+            
+            const navs = ['all', 'favorites', 'deleted'];
+            navs.forEach(n => {
+                const el = document.getElementById(`nav-${n}`);
+                if (viewMode === n) el.className = "w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400";
+                else el.className = "w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800";
+            });
+            lucide.createIcons();
+        }
+
+        function createSwipeableCard(prompt) {
+            const isSelected = prompt.id === selectedId;
+            const container = document.createElement('div');
+            container.className = 'swipe-container rounded-3xl';
+            const action = document.createElement('div');
+            action.className = 'swipe-action rounded-3xl';
+            action.innerHTML = `<i data-lucide="trash-2" class="w-5 h-5"></i>`;
+            const content = document.createElement('div');
+            content.className = `swipe-content p-5 rounded-3xl cursor-pointer transition-all border ${isSelected ? 'bg-white dark:bg-zinc-900 border-indigo-500 shadow-lg shadow-indigo-500/10 scale-[1.02]' : 'bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 border-zinc-200 dark:border-zinc-800 shadow-sm'}`;
+            content.innerHTML = `
+                <div class="flex justify-between items-start gap-2">
+                    <h3 class="font-bold text-zinc-900 dark:text-zinc-100 truncate flex-1">${prompt.title || 'Untitled'}</h3>
+                    ${prompt.isFavorite ? '<i data-lucide="star" class="w-3 h-3 text-amber-400 fill-amber-400"></i>' : ''}
+                </div>
+                <p class="text-xs text-zinc-500 dark:text-zinc-400 truncate mt-1.5">${prompt.body}</p>
+                <div class="flex gap-1.5 mt-3 overflow-hidden">
+                    ${(prompt.tags || []).slice(0, 2).map(t => `<span class="text-[9px] px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-lg font-bold">#${t}</span>`).join('')}
+                    ${prompt.tags && prompt.tags.length > 2 ? `<span class="text-[9px] text-zinc-400 font-bold">+${prompt.tags.length - 2}</span>` : ''}
+                </div>
+            `;
+            container.appendChild(action);
+            container.appendChild(content);
+
+            let startX = 0, currentX = 0, isSwiping = false;
+            content.addEventListener('touchstart', e => { startX = e.touches[0].clientX; isSwiping = true; });
+            content.addEventListener('touchmove', e => { if (!isSwiping) return; currentX = e.touches[0].clientX - startX; if (currentX < 0) content.style.transform = `translateX(${Math.max(currentX, -80)}px)`; });
+            content.addEventListener('touchend', () => { isSwiping = false; if (currentX < -40) { content.style.transform = 'translateX(-80px)'; setTimeout(() => { if (viewMode === 'deleted') handleHardDelete(prompt.id); else handleSoftDelete(prompt.id); content.style.transform = 'translateX(0)'; }, 300); } else content.style.transform = 'translateX(0)'; currentX = 0; });
+            content.onclick = () => selectPrompt(prompt.id);
+            return container;
+        }
+
+        // --- Navigation ---
+        function toggleNav(show) {
+            if (show) { elNavDrawer.style.transform = 'translateX(0)'; elNavOverlay.style.opacity = '1'; elNavOverlay.style.pointerEvents = 'auto'; }
+            else { elNavDrawer.style.transform = 'translateX(-100%)'; elNavOverlay.style.opacity = '0'; elNavOverlay.style.pointerEvents = 'none'; }
+        }
+
+        function setViewMode(mode) { viewMode = mode; selectedId = null; renderSidebarTags(); renderList(); showView('empty'); toggleNav(false); }
+        function handleSearch(val) { searchQuery = val; renderList(); }
+        function toggleSort() { sortOrder = sortOrder === 'desc' ? 'asc' : 'desc'; renderList(); }
+
+        function selectPrompt(id) {
+            selectedId = id;
+            renderList();
+            const prompt = prompts.find(p => p.id === id);
+            if (!prompt) return showView('empty');
+            document.getElementById('detail-title').textContent = prompt.title;
+            document.getElementById('detail-body').innerHTML = prompt.body.replace(/\[([^\]]+)\]/g, '<span class="variable-tag">[$1]</span>');
+            document.getElementById('detail-tag-container').innerHTML = (prompt.tags || []).map(t => `<span class="px-3 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-xl text-xs font-bold">#${t}</span>`).join('');
+            document.getElementById('detail-fav-btn').innerHTML = `<button onclick="toggleFavorite('${prompt.id}')" class="p-2.5 ${prompt.isFavorite ? 'text-amber-400 bg-amber-50 dark:bg-amber-900/20' : 'text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'} rounded-full transition-all"><i data-lucide="star" class="w-6 h-6 ${prompt.isFavorite ? 'fill-amber-400' : ''}"></i></button>`;
+            const delBtn = document.getElementById('detail-delete-btn');
+            if (prompt.isDeleted) { delBtn.innerHTML = '<i data-lucide="rotate-ccw" class="w-5 h-5"></i>'; delBtn.onclick = () => handleRestore(prompt.id); }
+            else { delBtn.innerHTML = '<i data-lucide="trash-2" class="w-5 h-5"></i>'; delBtn.onclick = () => handleSoftDelete(prompt.id); }
+            showView('detail');
+            lucide.createIcons();
+        }
+
+        function closeDetail() { selectedId = null; renderList(); showView('empty'); }
+
+        function showView(view) {
+            elEmpty.classList.add('hidden'); elEditor.classList.add('hidden'); elDetail.classList.add('hidden');
+            if (view === 'empty') { elEmpty.classList.remove('hidden'); elDetailContainer.classList.remove('active'); }
+            else if (view === 'editor') { elEditor.classList.remove('hidden'); elDetailContainer.classList.add('active'); }
+            else if (view === 'detail') { elDetail.classList.remove('hidden'); elDetailContainer.classList.add('active'); }
+        }
+
+        // --- Editor ---
+        function createNew() { selectedId = null; editTags = []; isDirty = false; document.getElementById('editor-mode-title').textContent = "New Prompt"; document.getElementById('edit-title').value = ''; document.getElementById('edit-body').value = ''; renderEditTags(); showView('editor'); }
+        function editCurrent() { const prompt = prompts.find(p => p.id === selectedId); if (!prompt) return; editTags = [...(prompt.tags || [])]; isDirty = false; document.getElementById('editor-mode-title').textContent = "Edit Prompt"; document.getElementById('edit-title').value = prompt.title; document.getElementById('edit-body').value = prompt.body; renderEditTags(); showView('editor'); }
+        function renderEditTags() { const container = document.getElementById('edit-tag-container'); container.innerHTML = editTags.map((t, i) => `<span class="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold">${t}<button onclick="removeTag(${i})" class="hover:text-indigo-800"><i data-lucide="x" class="w-3 h-3"></i></button></span>`).join(''); lucide.createIcons(); }
+        function addTagFromInput() { const input = document.getElementById('tag-input'); const val = input.value.trim().toLowerCase(); if (val && !editTags.includes(val)) { editTags.push(val); input.value = ''; markDirty(); renderEditTags(); } }
+        function removeTag(index) { editTags.splice(index, 1); markDirty(); renderEditTags(); }
+        function markDirty() { isDirty = true; }
+        function handleCancelEdit() { if (isDirty) document.getElementById('discard-modal').classList.remove('hidden'), document.getElementById('discard-modal').classList.add('flex'); else cancelEdit(); }
+        function cancelEdit() { if (selectedId) selectPrompt(selectedId); else showView('empty'); }
+        function confirmDiscard() { closeDiscardModal(); isDirty = false; cancelEdit(); }
+        function closeDiscardModal() { document.getElementById('discard-modal').classList.add('hidden'), document.getElementById('discard-modal').classList.remove('flex'); }
+
+        function savePrompt() {
+            const title = document.getElementById('edit-title').value.trim() || 'Untitled';
+            const body = document.getElementById('edit-body').value.trim();
+            if (!body) return showToast('Prompt body is required');
+            if (selectedId) { const idx = prompts.findIndex(p => p.id === selectedId); prompts[idx] = { ...prompts[idx], title, body, tags: editTags, updatedAt: Date.now() }; }
+            else { const newPrompt = { id: Date.now().toString(), title, body, tags: editTags, isFavorite: false, isDeleted: false, createdAt: Date.now(), updatedAt: Date.now() }; prompts.unshift(newPrompt); selectedId = newPrompt.id; }
+            saveData(); isDirty = false; renderSidebarTags(); renderList(); selectPrompt(selectedId);
+        }
+
+        // --- Actions ---
+        function handleSoftDelete(id) { prompts = prompts.map(p => p.id === id ? { ...p, isDeleted: true } : p); saveData(); if (selectedId === id) selectedId = null; renderSidebarTags(); renderList(); showView('empty'); showToast('Moved to Trash'); }
+        function handleRestore(id) { prompts = prompts.map(p => p.id === id ? { ...p, isDeleted: false } : p); saveData(); renderSidebarTags(); renderList(); selectPrompt(id); showToast('Prompt Restored'); }
+        function handleHardDelete(id) { if (confirm('Permanently delete this prompt?')) { prompts = prompts.filter(p => p.id !== id); saveData(); if (selectedId === id) selectedId = null; renderSidebarTags(); renderList(); showView('empty'); showToast('Permanently Deleted'); } }
+        function toggleFavorite(id) { prompts = prompts.map(p => p.id === id ? { ...p, isFavorite: !p.isFavorite } : p); saveData(); renderList(); selectPrompt(id); }
+        async function copyCurrent() {
+            const prompt = prompts.find(p => p.id === selectedId); if (!prompt) return;
+            const textToCopy = settings.includeTitleOnCopy ? `${prompt.title}\n\n${prompt.body}` : prompt.body;
+            try { await navigator.clipboard.writeText(textToCopy); showToast('Copied to clipboard!'); if (settings.autoCloseOnCopy) closeDetail(); } catch (err) { showToast('Failed to copy'); }
+        }
+
+        // --- Settings & Data ---
+        function openSettings() { document.getElementById('settings-modal').classList.remove('hidden'), document.getElementById('settings-modal').classList.add('flex'); toggleNav(false); }
+        function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'), document.getElementById('settings-modal').classList.remove('flex'); }
+        function toggleDark() { isDarkMode = !isDarkMode; applyTheme(); }
+        function toggleSetting(key) { settings[key] = !settings[key]; localStorage.setItem('prompt_vault_settings', JSON.stringify(settings)); updateSettingsUI(); }
+        function openFactoryReset() { closeSettings(); document.getElementById('reset-modal').classList.remove('hidden'), document.getElementById('reset-modal').classList.add('flex'); document.getElementById('reset-input').value = ''; checkResetInput(); }
+        function closeFactoryReset() { document.getElementById('reset-modal').classList.add('hidden'), document.getElementById('reset-modal').classList.remove('flex'); }
+        function checkResetInput() { const val = document.getElementById('reset-input').value; const btn = document.getElementById('btn-confirm-reset'); if (val === 'DELETE') { btn.disabled = false; btn.classList.remove('bg-red-500/30', 'cursor-not-allowed'); btn.classList.add('bg-red-500'); } else { btn.disabled = true; btn.classList.add('bg-red-500/30', 'cursor-not-allowed'); btn.classList.remove('bg-red-500'); } }
+        function executeReset() { localStorage.clear(); window.location.reload(); }
+        function saveData() { localStorage.setItem('prompt_vault_data', JSON.stringify(prompts)); }
+        function showToast(msg) { elToast.textContent = msg; elToast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none'); setTimeout(() => { elToast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none'); }, 2000); }
+
+        function exportCSV() {
+            const headers = ['id', 'title', 'body', 'tags', 'isFavorite', 'isDeleted', 'createdAt', 'updatedAt'];
+            const rows = prompts.map(p => [p.id, `"${p.title.replace(/"/g, '""')}"`, `"${p.body.replace(/"/g, '""')}"`, `"${(p.tags || []).join(',')}"`, p.isFavorite, p.isDeleted, p.createdAt, p.updatedAt].join(','));
+            const csvContent = [headers.join(','), ...rows].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `prompt_vault_backup_${new Date().toISOString().split('T')[0]}.csv`; link.click();
+        }
+
+        function importCSV(input) {
+            const file = input.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result; const lines = text.split('\n'); const newPrompts = [];
+                for (let i = 1; i < lines.length; i++) {
+                    if (!lines[i].trim()) continue;
+                    const parts = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+                    if (parts && parts.length >= 3) {
+                        newPrompts.push({ id: parts[0] || Date.now().toString() + i, title: (parts[1] || '').replace(/^"|"$/g, '').replace(/""/g, '"'), body: (parts[2] || '').replace(/^"|"$/g, '').replace(/""/g, '"'), tags: parts[3] ? parts[3].replace(/^"|"$/g, '').split(',').filter(t => t) : [], isFavorite: parts[4] === 'true', isDeleted: parts[5] === 'true', createdAt: parseInt(parts[6]) || Date.now(), updatedAt: parseInt(parts[7]) || Date.now() });
+                    }
+                }
+                if (confirm(`Import ${newPrompts.length} prompts?`)) { prompts = [...newPrompts, ...prompts]; const seen = new Set(); prompts = prompts.filter(p => { const duplicate = seen.has(p.id); seen.add(p.id); return !duplicate; }); saveData(); renderSidebarTags(); renderList(); showToast(`Imported ${newPrompts.length} prompts`); }
+            };
+            reader.readAsText(file);
+        }
+
+        init();
+    </script>
+</body>
+</html>

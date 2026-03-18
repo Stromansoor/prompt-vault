@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Prompt Vault</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .prose pre { background-color: #f4f4f5; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+    .dark .prose pre { background-color: #18181b; }
+    /* Animations */
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes zoomIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+    .animate-zoom-in { animation: zoomIn 0.2s ease-out forwards; }
+    .animate-slide-up { animation: slideUp 0.2s ease-out forwards; }
+    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  </style>
+</head>
+<body class="bg-zinc-50 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-200 overflow-hidden selection:bg-indigo-500/30 font-sans">
+  <div class="flex h-screen w-full">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-72 bg-zinc-50 dark:bg-zinc-950 flex flex-col transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 -translate-x-full">
+      <div class="p-6 flex items-center justify-between h-[88px]">
+        <h2 class="text-xl font-medium text-zinc-900 dark:text-zinc-100 pl-2">Categories</h2>
+        <button id="close-sidebar" class="lg:hidden p-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors">
+          <i data-lucide="x" class="w-6 h-6"></i>
+        </button>
+      </div>
+      <div id="sidebar-nav" class="px-4 pb-4 space-y-1 overflow-y-auto flex-1"></div>
+      <div class="p-4 border-t border-zinc-200 dark:border-zinc-800/50 flex flex-col gap-1">
+        <button id="nav-deleted" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-full text-sm font-medium transition-colors text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:text-red-300">
+          <i data-lucide="trash-2" class="w-[18px] h-[18px]"></i> Deleted
+        </button>
+        <button id="nav-settings" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-full text-sm font-medium transition-colors text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:text-zinc-800 dark:hover:text-zinc-200">
+          <i data-lucide="settings" class="w-[18px] h-[18px]"></i> Settings
+        </button>
+      </div>
+    </aside>
+
+    <!-- Sidebar Overlay -->
+    <div id="sidebar-overlay" class="fixed inset-0 bg-zinc-50/60 dark:bg-zinc-950/60 z-30 lg:hidden backdrop-blur-sm transition-opacity hidden"></div>
+
+    <!-- List View -->
+    <div id="list-view" class="flex-col w-full md:w-80 lg:w-96 bg-zinc-50 dark:bg-zinc-950 flex">
+      <div class="p-4 flex flex-col gap-4">
+        <div class="flex items-center justify-between h-14 px-2">
+          <div class="flex items-center gap-3">
+            <button id="open-sidebar" class="lg:hidden p-2 -ml-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors">
+              <i data-lucide="menu" class="w-6 h-6"></i>
+            </button>
+            <h1 id="header-text" class="text-2xl font-medium text-zinc-900 dark:text-zinc-100 tracking-tight truncate max-w-[200px] sm:max-w-[300px]">Prompt Vault</h1>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btn-empty-trash" class="hidden p-3.5 bg-red-900/30 hover:bg-red-900/50 text-red-300 rounded-full transition-colors active:scale-95 shadow-sm" title="Empty Trash">
+              <i data-lucide="trash-2" class="w-[22px] h-[22px] stroke-[2.5]"></i>
+            </button>
+            <button id="btn-add-prompt" class="p-3.5 bg-indigo-200 hover:bg-indigo-300 text-indigo-950 rounded-full transition-colors active:scale-95 shadow-sm" title="Add new prompt">
+              <i data-lucide="plus" class="w-[22px] h-[22px] stroke-[2.5]"></i>
+            </button>
+          </div>
+        </div>
+        <div class="flex gap-2 px-2">
+          <div class="relative flex-1">
+            <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500 w-5 h-5"></i>
+            <input type="text" id="search-input" placeholder="Search prompts..." class="w-full bg-white dark:bg-zinc-900 rounded-full py-3.5 pl-11 pr-4 text-base focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all placeholder:text-zinc-400 dark:text-zinc-500 text-zinc-800 dark:text-zinc-200">
+          </div>
+          <div class="relative">
+            <button id="btn-sort" class="flex items-center justify-center w-[52px] h-[52px] bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all border border-transparent hover:border-zinc-300 dark:border-zinc-700">
+              <i data-lucide="arrow-up-down" class="w-5 h-5 text-zinc-500 dark:text-zinc-400"></i>
+            </button>
+            <div id="sort-menu" class="hidden absolute right-0 top-full mt-2 w-48 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-2xl shadow-xl z-20 overflow-hidden py-1 animate-zoom-in">
+              <!-- Sort options populated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="prompt-list" class="flex-1 overflow-y-auto px-4 pb-4 space-y-3 select-none overflow-x-hidden"></div>
+    </div>
+
+    <!-- Detail View -->
+    <div id="detail-view" class="flex-1 flex-col bg-zinc-50 dark:bg-zinc-950 md:rounded-l-[2.5rem] md:my-2 md:mr-2 overflow-hidden hidden md:flex">
+      <div id="detail-empty" class="flex-1 flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 p-8 text-center select-none">
+        <div class="w-20 h-20 rounded-full bg-zinc-100/50 dark:bg-zinc-800/50 flex items-center justify-center mb-6">
+          <i data-lucide="copy" class="w-8 h-8 text-zinc-500 dark:text-zinc-400"></i>
+        </div>
+        <h2 class="text-2xl font-medium text-zinc-700 dark:text-zinc-300 mb-3">No Prompt Selected</h2>
+        <p class="max-w-sm text-base text-zinc-400 dark:text-zinc-500">Select a prompt from the sidebar or create a new one to get started.</p>
+      </div>
+      <div id="detail-content" class="hidden flex-col h-full">
+        <div class="flex items-center justify-between p-4 sm:p-6 md:px-8 h-[88px]">
+          <div class="flex items-center gap-4">
+            <button id="btn-back-list" class="md:hidden p-2 -ml-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+              <i data-lucide="chevron-left" class="w-7 h-7"></i>
+            </button>
+            <h2 id="detail-title" class="text-2xl font-medium text-zinc-900 dark:text-zinc-100 truncate pr-4"></h2>
+          </div>
+          <div id="detail-actions" class="flex items-center gap-2"></div>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 sm:p-6 md:px-8 pb-12">
+          <div class="max-w-4xl mx-auto">
+            <div id="detail-tags" class="flex flex-wrap gap-2 mb-8 hidden"></div>
+            <div class="bg-transparent rounded-[2rem] p-6 sm:p-8 md:p-10">
+              <div id="detail-body" class="prose dark:prose-invert prose-zinc max-w-none prose-p:leading-relaxed prose-pre:bg-white dark:prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-200 dark:prose-pre:border-zinc-800 select-text"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Modals Container -->
+  <div id="modals-container"></div>
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 hidden animate-slide-up">
+    <div class="bg-zinc-900 dark:bg-zinc-800 text-zinc-100 dark:text-zinc-200 px-5 py-3.5 rounded-full shadow-lg flex items-center gap-4">
+      <div class="flex items-center gap-3">
+        <div class="bg-indigo-500/20 p-1.5 rounded-full">
+          <i data-lucide="check" class="w-[18px] h-[18px] text-indigo-400 dark:text-indigo-300"></i>
+        </div>
+        <span id="toast-message" class="text-sm font-medium"></span>
+      </div>
+      <div id="toast-action-container" class="hidden items-center gap-4">
+        <div class="w-px h-4 bg-zinc-700"></div>
+        <button id="toast-action-btn" class="text-sm font-bold bg-indigo-500/20 text-indigo-400 dark:text-indigo-300 hover:bg-indigo-500/30 px-3 py-1.5 rounded-md uppercase tracking-wide transition-colors"></button>
+      </div>
+    </div>
+  </div>
+  <script>
+    // State
+    let prompts = JSON.parse(localStorage.getItem('prompt_vault_data')) || [
+      {
+        id: '1',
+        title: 'Example: Code Review Expert',
+        body: 'Act as an expert software engineer. Review the following code for performance, security, and readability issues. Provide actionable feedback and refactored code snippets.',
+        tags: ['Code', 'Review'],
+        createdAt: Date.now(),
+      }
+    ];
+    let selectedId = null;
+    let searchQuery = '';
+    let sortOption = 'created-desc';
+    let isSortMenuOpen = false;
+    let viewMode = 'all';
+    let selectedTags = [];
+    let isSidebarOpen = false;
+    let history = JSON.parse(localStorage.getItem('prompt_vault_history')) || [];
+    let isDarkMode = localStorage.getItem('prompt_vault_theme') ? localStorage.getItem('prompt_vault_theme') === 'dark' : true;
+    let appSettings = JSON.parse(localStorage.getItem('prompt_vault_settings')) || { autoCloseOnCopy: false, includeTitleOnCopy: false };
+    
+    let editingPrompt = null;
+    let modalTags = [];
+    let isPreviewMode = false;
+    let promptToDelete = null;
+    let isDirty = false;
+
+    // Utils
+    const savePrompts = () => localStorage.setItem('prompt_vault_data', JSON.stringify(prompts));
+    const saveHistory = () => localStorage.setItem('prompt_vault_history', JSON.stringify(history));
+    const saveSettings = () => localStorage.setItem('prompt_vault_settings', JSON.stringify(appSettings));
+    
+    const applyTheme = () => {
+      if (isDarkMode) {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('prompt_vault_theme', 'dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('prompt_vault_theme', 'light');
+      }
+    };
+    applyTheme();
+
+    const showToast = (message, action = null) => {
+      const container = document.getElementById('toast-container');
+      document.getElementById('toast-message').textContent = message;
+      const actionContainer = document.getElementById('toast-action-container');
+      const actionBtn = document.getElementById('toast-action-btn');
+      
+      if (action) {
+        actionContainer.classList.remove('hidden');
+        actionContainer.classList.add('flex');
+        actionBtn.textContent = action.label;
+        actionBtn.onclick = () => { action.onClick(); container.classList.add('hidden'); };
+      } else {
+        actionContainer.classList.add('hidden');
+        actionContainer.classList.remove('flex');
+      }
+      
+      container.classList.remove('hidden');
+      setTimeout(() => container.classList.add('hidden'), 4000);
+    };
+
+    const handleSelectPrompt = (id) => {
+      selectedId = id;
+      if (id) {
+        prompts = prompts.map(p => p.id === id ? { ...p, lastAccessedAt: Date.now() } : p);
+        savePrompts();
+        history = history.filter(hId => hId !== id);
+        history.unshift(id);
+        history = history.slice(0, 50);
+        saveHistory();
+      }
+      renderApp();
+    };
+
+    const handleCopy = async (prompt) => {
+      try {
+        const textToCopy = appSettings.includeTitleOnCopy ? `${prompt.title}\n\n${prompt.body}` : prompt.body;
+        await navigator.clipboard.writeText(textToCopy);
+        showToast('Copied to Clipboard!');
+        if (appSettings.autoCloseOnCopy) handleSelectPrompt(null);
+      } catch (err) {
+        showToast('Failed to copy');
+      }
+    };
+
+    const escapeCSV = (str) => {
+      if (str == null) return '';
+      const s = String(str);
+      if (/[,"\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+
+    const parseCSV = (text) => {
+      const rows = [];
+      let currentRow = [];
+      let currentCell = '';
+      let inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const nextChar = text[i + 1];
+        if (inQuotes) {
+          if (char === '"' && nextChar === '"') { currentCell += '"'; i++; }
+          else if (char === '"') inQuotes = false;
+          else currentCell += char;
+        } else {
+          if (char === '"') inQuotes = true;
+          else if (char === ',') { currentRow.push(currentCell); currentCell = ''; }
+          else if (char === '\n' || (char === '\r' && nextChar === '\n')) {
+            currentRow.push(currentCell); rows.push(currentRow); currentRow = []; currentCell = '';
+            if (char === '\r') i++;
+          } else currentCell += char;
+        }
+      }
+      if (currentCell !== '' || currentRow.length > 0) { currentRow.push(currentCell); rows.push(currentRow); }
+      return rows;
+    };
+
+    const renderWithVariables = (text) => {
+      if (!text) return '';
+      return text.replace(/(\[[^\]]+\])/g, '<span class="bg-yellow-900/30 text-yellow-200 px-1 rounded font-medium">$1</span>');
+    };
+    const renderSidebar = () => {
+      const navContainer = document.getElementById('sidebar-nav');
+      navContainer.innerHTML = '';
+      
+      const allBtn = document.createElement('button');
+      allBtn.className = `w-full flex items-center justify-between px-4 py-3.5 rounded-full text-sm font-medium transition-colors ${viewMode === 'all' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' : 'text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'}`;
+      allBtn.innerHTML = `<div class="flex items-center gap-4"><i data-lucide="layout-grid" class="w-[18px] h-[18px]"></i> All Prompts</div><span class="text-xs font-semibold bg-zinc-200/50 dark:bg-zinc-800 px-2 py-0.5 rounded-full">${prompts.filter(p => !p.isDeleted).length}</span>`;
+      allBtn.onclick = () => { viewMode = 'all'; selectedTags = []; renderApp(); };
+      navContainer.appendChild(allBtn);
+
+      const recentBtn = document.createElement('button');
+      recentBtn.className = `w-full flex items-center justify-between px-4 py-3.5 rounded-full text-sm font-medium transition-colors ${viewMode === 'recent' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' : 'text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'}`;
+      recentBtn.innerHTML = `<div class="flex items-center gap-4"><i data-lucide="clock" class="w-[18px] h-[18px]"></i> Recent</div><span class="text-xs font-semibold bg-zinc-200/50 dark:bg-zinc-800 px-2 py-0.5 rounded-full">${history.length}</span>`;
+      recentBtn.onclick = () => { viewMode = 'recent'; selectedTags = []; renderApp(); };
+      navContainer.appendChild(recentBtn);
+
+      const tags = Array.from(new Set(prompts.filter(p => !p.isDeleted).flatMap(p => p.tags || []))).sort();
+      if (tags.length > 0) {
+        const tagsHeader = document.createElement('div');
+        tagsHeader.className = 'px-4 py-3 mt-4 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider';
+        tagsHeader.textContent = 'Tags';
+        navContainer.appendChild(tagsHeader);
+
+        tags.forEach(tag => {
+          const tagBtn = document.createElement('button');
+          const isSelected = selectedTags.includes(tag);
+          tagBtn.className = `w-full flex items-center justify-between px-4 py-3 rounded-full text-sm font-medium transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' : 'text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'}`;
+          tagBtn.innerHTML = `<div class="flex items-center gap-4"><i data-lucide="tag" class="w-[16px] h-[16px]"></i> ${tag}</div>`;
+          tagBtn.onclick = () => {
+            viewMode = 'tags';
+            if (isSelected) selectedTags = selectedTags.filter(t => t !== tag);
+            else selectedTags = [...selectedTags, tag];
+            if (selectedTags.length === 0) viewMode = 'all';
+            renderApp();
+          };
+          navContainer.appendChild(tagBtn);
+        });
+      }
+
+      const deletedBtn = document.getElementById('nav-deleted');
+      deletedBtn.className = `w-full flex items-center gap-4 px-4 py-3.5 rounded-full text-sm font-medium transition-colors ${viewMode === 'deleted' ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:text-red-300'}`;
+      deletedBtn.onclick = () => { viewMode = 'deleted'; selectedTags = []; renderApp(); };
+      
+      lucide.createIcons();
+    };
+    const renderList = () => {
+      const listContainer = document.getElementById('prompt-list');
+      listContainer.innerHTML = '';
+      
+      let filtered = prompts;
+      if (viewMode === 'deleted') {
+        filtered = filtered.filter(p => p.isDeleted);
+        document.getElementById('header-text').textContent = 'Recycle Bin';
+        document.getElementById('btn-empty-trash').classList.remove('hidden');
+        document.getElementById('btn-add-prompt').classList.add('hidden');
+      } else {
+        filtered = filtered.filter(p => !p.isDeleted);
+        document.getElementById('header-text').textContent = 'Prompt Vault';
+        document.getElementById('btn-empty-trash').classList.add('hidden');
+        document.getElementById('btn-add-prompt').classList.remove('hidden');
+        
+        if (viewMode === 'recent') {
+          filtered = history.map(id => filtered.find(p => p.id === id)).filter(Boolean);
+        } else if (viewMode === 'tags' && selectedTags.length > 0) {
+          filtered = filtered.filter(p => selectedTags.every(t => p.tags?.includes(t)));
+        }
+      }
+
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter(p => p.title.toLowerCase().includes(q) || p.body.toLowerCase().includes(q) || p.tags?.some(t => t.toLowerCase().includes(q)));
+      }
+
+      if (viewMode !== 'recent') {
+        filtered.sort((a, b) => {
+          switch (sortOption) {
+            case 'created-desc': return b.createdAt - a.createdAt;
+            case 'created-asc': return a.createdAt - b.createdAt;
+            case 'alpha-asc': return a.title.localeCompare(b.title);
+            case 'alpha-desc': return b.title.localeCompare(a.title);
+            default: return 0;
+          }
+        });
+      }
+
+      if (filtered.length === 0) {
+        listContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-zinc-400 dark:text-zinc-500 p-8 text-center animate-fade-in"><div class="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800/50 flex items-center justify-center mb-4"><i data-lucide="search-x" class="w-6 h-6"></i></div><p class="text-sm">No prompts found</p></div>`;
+      } else {
+        filtered.forEach(prompt => {
+          const card = document.createElement('div');
+          const isSelected = selectedId === prompt.id;
+          card.className = `group relative overflow-hidden rounded-2xl cursor-pointer transition-all duration-200 border ${isSelected ? 'bg-white dark:bg-zinc-900 border-indigo-200 dark:border-indigo-500/30 shadow-sm ring-1 ring-indigo-500/10' : 'bg-transparent border-transparent hover:bg-white/60 dark:hover:bg-zinc-900/60 hover:border-zinc-200 dark:hover:border-zinc-800'}`;
+          
+          let contentHtml = `<div class="p-4 relative z-10 transition-transform duration-200" id="card-content-${prompt.id}">`;
+          contentHtml += `<div class="flex justify-between items-start gap-4 mb-2"><h3 class="font-semibold text-zinc-900 dark:text-zinc-100 truncate flex-1">${prompt.title}</h3></div>`;
+          contentHtml += `<p class="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2 mb-3 leading-relaxed">${prompt.body}</p>`;
+          
+          if (prompt.tags && prompt.tags.length > 0) {
+            contentHtml += `<div class="flex flex-wrap gap-1.5 mt-auto">`;
+            prompt.tags.slice(0, 3).forEach(tag => {
+              contentHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">${tag}</span>`;
+            });
+            if (prompt.tags.length > 3) {
+              contentHtml += `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">+${prompt.tags.length - 3}</span>`;
+            }
+            contentHtml += `</div>`;
+          }
+          contentHtml += `</div>`;
+          
+          if (!prompt.isDeleted) {
+            contentHtml += `<div class="absolute inset-y-0 right-0 w-24 bg-red-500 flex items-center justify-end pr-6 text-white opacity-0 transition-opacity duration-200" id="card-delete-${prompt.id}"><i data-lucide="trash-2" class="w-5 h-5"></i></div>`;
+          }
+          
+          card.innerHTML = contentHtml;
+          
+          // Swipe logic
+          if (!prompt.isDeleted) {
+            let startX = 0;
+            let currentX = 0;
+            let isDragging = false;
+            const contentDiv = card.querySelector(`#card-content-${prompt.id}`);
+            const deleteDiv = card.querySelector(`#card-delete-${prompt.id}`);
+
+            const handleStart = (e) => {
+              startX = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+              isDragging = true;
+              contentDiv.style.transition = 'none';
+            };
+
+            const handleMove = (e) => {
+              if (!isDragging) return;
+              const x = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+              currentX = x - startX;
+              if (currentX < 0) {
+                e.preventDefault();
+                contentDiv.style.transform = `translateX(${Math.max(currentX, -80)}px)`;
+                deleteDiv.style.opacity = Math.min(Math.abs(currentX) / 80, 1);
+              }
+            };
+
+            const handleEnd = () => {
+              if (!isDragging) return;
+              isDragging = false;
+              contentDiv.style.transition = 'transform 0.2s ease-out';
+              if (currentX < -50) {
+                contentDiv.style.transform = `translateX(-80px)`;
+                promptToDelete = prompt;
+                renderModals();
+                setTimeout(() => {
+                  contentDiv.style.transform = `translateX(0px)`;
+                  deleteDiv.style.opacity = 0;
+                }, 300);
+              } else {
+                contentDiv.style.transform = `translateX(0px)`;
+                deleteDiv.style.opacity = 0;
+              }
+              currentX = 0;
+            };
+
+            card.addEventListener('touchstart', handleStart, { passive: true });
+            card.addEventListener('touchmove', handleMove, { passive: false });
+            card.addEventListener('touchend', handleEnd);
+            card.addEventListener('mousedown', handleStart);
+            document.addEventListener('mousemove', handleMove);
+            document.addEventListener('mouseup', handleEnd);
+          }
+
+          card.onclick = (e) => {
+            if (e.target.closest('.swipe-delete-btn')) return;
+            handleSelectPrompt(prompt.id);
+            if (window.innerWidth < 768) {
+              document.getElementById('list-view').classList.add('hidden');
+              document.getElementById('detail-view').classList.remove('hidden');
+              document.getElementById('detail-view').classList.add('flex');
+            }
+          };
+          
+          listContainer.appendChild(card);
+        });
+      }
+      lucide.createIcons();
+    };
+    const renderDetail = () => {
+      const emptyView = document.getElementById('detail-empty');
+      const contentView = document.getElementById('detail-content');
+      const prompt = prompts.find(p => p.id === selectedId);
+
+      if (!prompt) {
+        emptyView.classList.remove('hidden');
+        contentView.classList.add('hidden');
+        contentView.classList.remove('flex');
+        return;
+      }
+
+      emptyView.classList.add('hidden');
+      contentView.classList.remove('hidden');
+      contentView.classList.add('flex');
+
+      document.getElementById('detail-title').textContent = prompt.title;
+      
+      const actionsContainer = document.getElementById('detail-actions');
+      actionsContainer.innerHTML = '';
+      
+      if (prompt.isDeleted) {
+        const restoreBtn = document.createElement('button');
+        restoreBtn.className = 'p-2 text-zinc-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors';
+        restoreBtn.title = 'Restore';
+        restoreBtn.innerHTML = '<i data-lucide="rotate-ccw" class="w-5 h-5"></i>';
+        restoreBtn.onclick = () => {
+          prompts = prompts.map(p => p.id === prompt.id ? { ...p, isDeleted: false } : p);
+          savePrompts();
+          showToast('Prompt restored');
+          renderApp();
+        };
+        actionsContainer.appendChild(restoreBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'p-2 text-zinc-500 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors';
+        deleteBtn.title = 'Delete Permanently';
+        deleteBtn.innerHTML = '<i data-lucide="trash-2" class="w-5 h-5"></i>';
+        deleteBtn.onclick = () => {
+          promptToDelete = prompt;
+          renderModals();
+        };
+        actionsContainer.appendChild(deleteBtn);
+      } else {
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'p-2 text-zinc-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors';
+        copyBtn.title = 'Copy';
+        copyBtn.innerHTML = '<i data-lucide="copy" class="w-5 h-5"></i>';
+        copyBtn.onclick = () => handleCopy(prompt);
+        actionsContainer.appendChild(copyBtn);
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'p-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors';
+        editBtn.title = 'Edit';
+        editBtn.innerHTML = '<i data-lucide="edit-2" class="w-5 h-5"></i>';
+        editBtn.onclick = () => {
+          editingPrompt = { ...prompt };
+          modalTags = [...(prompt.tags || [])];
+          isPreviewMode = false;
+          renderModals();
+        };
+        actionsContainer.appendChild(editBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'p-2 text-zinc-500 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors';
+        deleteBtn.title = 'Delete';
+        deleteBtn.innerHTML = '<i data-lucide="trash-2" class="w-5 h-5"></i>';
+        deleteBtn.onclick = () => {
+          promptToDelete = prompt;
+          renderModals();
+        };
+        actionsContainer.appendChild(deleteBtn);
+      }
+
+      const tagsContainer = document.getElementById('detail-tags');
+      if (prompt.tags && prompt.tags.length > 0) {
+        tagsContainer.classList.remove('hidden');
+        tagsContainer.innerHTML = prompt.tags.map(tag => `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"><i data-lucide="tag" class="w-3 h-3 mr-1.5"></i>${tag}</span>`).join('');
+      } else {
+        tagsContainer.classList.add('hidden');
+      }
+
+      const bodyContainer = document.getElementById('detail-body');
+      const renderedBody = renderWithVariables(prompt.body);
+      bodyContainer.innerHTML = marked.parse(renderedBody);
+
+      lucide.createIcons();
+    };
+    const renderModals = () => {
+      const container = document.getElementById('modals-container');
+      container.innerHTML = '';
+
+      if (editingPrompt) {
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6';
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'absolute inset-0 bg-zinc-900/40 dark:bg-zinc-950/60 backdrop-blur-sm transition-opacity';
+        overlay.onclick = () => { if (!isDirty || confirm('Discard changes?')) { editingPrompt = null; renderModals(); } };
+        modal.appendChild(overlay);
+
+        const content = document.createElement('div');
+        content.className = 'relative w-full max-w-3xl bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-zoom-in border border-zinc-200 dark:border-zinc-800';
+        
+        let headerHtml = `<div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800"><h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">${editingPrompt.id ? 'Edit Prompt' : 'New Prompt'}</h2><div class="flex items-center gap-2">`;
+        headerHtml += `<button id="btn-toggle-preview" class="p-2 text-zinc-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors" title="${isPreviewMode ? 'Edit' : 'Preview'}"><i data-lucide="${isPreviewMode ? 'edit-3' : 'eye'}" class="w-5 h-5"></i></button>`;
+        headerHtml += `<button id="btn-close-modal" class="p-2 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button></div></div>`;
+        
+        let bodyHtml = `<div class="flex-1 overflow-y-auto p-6"><div class="space-y-6">`;
+        if (isPreviewMode) {
+          bodyHtml += `<div class="prose dark:prose-invert prose-zinc max-w-none prose-p:leading-relaxed prose-pre:bg-zinc-50 dark:prose-pre:bg-zinc-900/50 prose-pre:border prose-pre:border-zinc-200 dark:prose-pre:border-zinc-800">${marked.parse(renderWithVariables(editingPrompt.body || 'Nothing to preview'))}</div>`;
+        } else {
+          bodyHtml += `<div><label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Title</label><input type="text" id="modal-title" value="${editingPrompt.title || ''}" placeholder="e.g., Code Review Expert" class="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"></div>`;
+          bodyHtml += `<div><label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Prompt Content</label><textarea id="modal-body" rows="12" placeholder="Write your prompt here... Use [variable_name] for dynamic inputs." class="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 font-mono text-sm resize-y">${editingPrompt.body || ''}</textarea></div>`;
+          
+          bodyHtml += `<div><label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Tags</label><div class="flex flex-wrap gap-2 mb-3" id="modal-tags-container">`;
+          modalTags.forEach(tag => {
+            bodyHtml += `<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50">${tag}<button class="ml-2 text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-200 focus:outline-none" onclick="removeModalTag('${tag}')"><i data-lucide="x" class="w-3 h-3"></i></button></span>`;
+          });
+          bodyHtml += `</div><div class="relative"><input type="text" id="modal-tag-input" placeholder="Add a tag and press Enter..." class="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"></div></div>`;
+        }
+        bodyHtml += `</div></div>`;
+        
+        let footerHtml = `<div class="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-end gap-3 bg-zinc-50/50 dark:bg-zinc-900/50"><button id="btn-cancel-modal" class="px-5 py-2.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors">Cancel</button><button id="btn-save-modal" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm shadow-indigo-500/20 flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> Save Prompt</button></div>`;
+        
+        content.innerHTML = headerHtml + bodyHtml + footerHtml;
+        modal.appendChild(content);
+        container.appendChild(modal);
+
+        // Event Listeners for Modal
+        document.getElementById('btn-close-modal').onclick = () => { if (!isDirty || confirm('Discard changes?')) { editingPrompt = null; renderModals(); } };
+        document.getElementById('btn-cancel-modal').onclick = () => { if (!isDirty || confirm('Discard changes?')) { editingPrompt = null; renderModals(); } };
+        document.getElementById('btn-toggle-preview').onclick = () => { isPreviewMode = !isPreviewMode; renderModals(); };
+        
+        if (!isPreviewMode) {
+          const titleInput = document.getElementById('modal-title');
+          const bodyInput = document.getElementById('modal-body');
+          const tagInput = document.getElementById('modal-tag-input');
+
+          titleInput.oninput = (e) => { editingPrompt.title = e.target.value; isDirty = true; };
+          bodyInput.oninput = (e) => { editingPrompt.body = e.target.value; isDirty = true; };
+          
+          tagInput.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              const val = e.target.value.trim();
+              if (val && !modalTags.includes(val)) {
+                modalTags.push(val);
+                isDirty = true;
+                renderModals();
+              }
+            }
+          };
+          
+          window.removeModalTag = (tag) => {
+            modalTags = modalTags.filter(t => t !== tag);
+            isDirty = true;
+            renderModals();
+          };
+        }
+
+        document.getElementById('btn-save-modal').onclick = () => {
+          if (!editingPrompt.title.trim() || !editingPrompt.body.trim()) {
+            alert('Title and body are required.');
+            return;
+          }
+          const newPrompt = {
+            ...editingPrompt,
+            id: editingPrompt.id || Date.now().toString(),
+            tags: modalTags,
+            createdAt: editingPrompt.createdAt || Date.now(),
+            lastAccessedAt: Date.now()
+          };
+          
+          if (editingPrompt.id) {
+            prompts = prompts.map(p => p.id === newPrompt.id ? newPrompt : p);
+            showToast('Prompt updated');
+          } else {
+            prompts.unshift(newPrompt);
+            showToast('Prompt created');
+          }
+          
+          savePrompts();
+          selectedId = newPrompt.id;
+          editingPrompt = null;
+          isDirty = false;
+          renderApp();
+        };
+      }
+
+      if (promptToDelete) {
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6';
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'absolute inset-0 bg-zinc-900/40 dark:bg-zinc-950/60 backdrop-blur-sm transition-opacity';
+        overlay.onclick = () => { promptToDelete = null; renderModals(); };
+        modal.appendChild(overlay);
+
+        const content = document.createElement('div');
+        content.className = 'relative w-full max-w-md bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl p-6 animate-zoom-in border border-zinc-200 dark:border-zinc-800';
+        
+        const isPermanent = promptToDelete.isDeleted || promptToDelete === 'empty_trash';
+        
+        content.innerHTML = `
+          <div class="flex items-center gap-4 mb-6">
+            <div class="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="alert-triangle" class="w-6 h-6 text-red-600 dark:text-red-400"></i>
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">${isPermanent ? 'Delete Permanently?' : 'Move to Trash?'}</h3>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">${isPermanent ? 'This action cannot be undone. The prompt will be lost forever.' : 'You can restore this prompt later from the Recycle Bin.'}</p>
+            </div>
+          </div>
+          <div class="flex justify-end gap-3">
+            <button id="btn-cancel-delete" class="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors">Cancel</button>
+            <button id="btn-confirm-delete" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm shadow-red-500/20">Delete</button>
+          </div>
+        `;
+        
+        modal.appendChild(content);
+        container.appendChild(modal);
+
+        document.getElementById('btn-cancel-delete').onclick = () => { promptToDelete = null; renderModals(); };
+        document.getElementById('btn-confirm-delete').onclick = () => {
+          if (promptToDelete === 'empty_trash') {
+            prompts = prompts.filter(p => !p.isDeleted);
+            showToast('Trash emptied');
+          } else if (promptToDelete.isDeleted) {
+            prompts = prompts.filter(p => p.id !== promptToDelete.id);
+            if (selectedId === promptToDelete.id) selectedId = null;
+            showToast('Prompt deleted permanently');
+          } else {
+            prompts = prompts.map(p => p.id === promptToDelete.id ? { ...p, isDeleted: true } : p);
+            if (selectedId === promptToDelete.id) selectedId = null;
+            showToast('Moved to trash', { label: 'UNDO', onClick: () => {
+              prompts = prompts.map(p => p.id === promptToDelete.id ? { ...p, isDeleted: false } : p);
+              savePrompts();
+              renderApp();
+            }});
+          }
+          savePrompts();
+          promptToDelete = null;
+          renderApp();
+        };
+      }
+
+      lucide.createIcons();
+    };
+    const renderApp = () => {
+      renderSidebar();
+      renderList();
+      renderDetail();
+      renderModals();
+    };
+
+    // Initialization and Event Listeners
+    document.addEventListener('DOMContentLoaded', () => {
+      renderApp();
+
+      document.getElementById('open-sidebar').onclick = () => {
+        document.getElementById('sidebar').classList.remove('-translate-x-full');
+        document.getElementById('sidebar-overlay').classList.remove('hidden');
+      };
+
+      const closeSidebar = () => {
+        document.getElementById('sidebar').classList.add('-translate-x-full');
+        document.getElementById('sidebar-overlay').classList.add('hidden');
+      };
+      document.getElementById('close-sidebar').onclick = closeSidebar;
+      document.getElementById('sidebar-overlay').onclick = closeSidebar;
+
+      document.getElementById('btn-back-list').onclick = () => {
+        document.getElementById('detail-view').classList.add('hidden');
+        document.getElementById('detail-view').classList.remove('flex');
+        document.getElementById('list-view').classList.remove('hidden');
+      };
+
+      document.getElementById('btn-add-prompt').onclick = () => {
+        editingPrompt = { title: '', body: '', tags: [] };
+        modalTags = [];
+        isPreviewMode = false;
+        renderModals();
+      };
+
+      document.getElementById('btn-empty-trash').onclick = () => {
+        promptToDelete = 'empty_trash';
+        renderModals();
+      };
+
+      const searchInput = document.getElementById('search-input');
+      searchInput.oninput = (e) => {
+        searchQuery = e.target.value;
+        renderList();
+      };
+
+      const sortBtn = document.getElementById('btn-sort');
+      const sortMenu = document.getElementById('sort-menu');
+      
+      const updateSortMenu = () => {
+        sortMenu.innerHTML = [
+          { value: 'created-desc', label: 'Newest First', icon: 'clock' },
+          { value: 'created-asc', label: 'Oldest First', icon: 'clock-4' },
+          { value: 'alpha-asc', label: 'A to Z', icon: 'arrow-down-a-z' },
+          { value: 'alpha-desc', label: 'Z to A', icon: 'arrow-up-z-a' }
+        ].map(opt => `
+          <button class="w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${sortOption === opt.value ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium' : 'text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'}" onclick="setSortOption('${opt.value}')">
+            <div class="flex items-center gap-3"><i data-lucide="${opt.icon}" class="w-4 h-4"></i> ${opt.label}</div>
+            ${sortOption === opt.value ? '<i data-lucide="check" class="w-4 h-4"></i>' : ''}
+          </button>
+        `).join('');
+        lucide.createIcons();
+      };
+
+      window.setSortOption = (val) => {
+        sortOption = val;
+        isSortMenuOpen = false;
+        sortMenu.classList.add('hidden');
+        renderList();
+      };
+
+      sortBtn.onclick = (e) => {
+        e.stopPropagation();
+        isSortMenuOpen = !isSortMenuOpen;
+        if (isSortMenuOpen) {
+          updateSortMenu();
+          sortMenu.classList.remove('hidden');
+        } else {
+          sortMenu.classList.add('hidden');
+        }
+      };
+
+      document.addEventListener('click', (e) => {
+        if (isSortMenuOpen && !sortBtn.contains(e.target) && !sortMenu.contains(e.target)) {
+          isSortMenuOpen = false;
+          sortMenu.classList.add('hidden');
+        }
+      });
+
+      // Settings Modal Logic
+      let isSettingsModalOpen = false;
+      
+      const renderSettingsModal = () => {
+        if (!isSettingsModalOpen) return;
+        const container = document.getElementById('modals-container');
+        
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6';
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'absolute inset-0 bg-zinc-900/40 dark:bg-zinc-950/60 backdrop-blur-sm transition-opacity';
+        overlay.onclick = () => { isSettingsModalOpen = false; renderApp(); };
+        modal.appendChild(overlay);
+
+        const content = document.createElement('div');
+        content.className = 'relative w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-zoom-in border border-zinc-200 dark:border-zinc-800';
+        
+        let html = `
+          <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+            <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><i data-lucide="settings" class="w-5 h-5"></i> Settings</h2>
+            <button id="btn-close-settings" class="p-2 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <div class="flex-1 overflow-y-auto p-6 space-y-8">
+            
+            <div class="space-y-4">
+              <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Appearance</h3>
+              <div class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700/50">
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-white dark:bg-zinc-800 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-700"><i data-lucide="${isDarkMode ? 'moon' : 'sun'}" class="w-5 h-5 text-zinc-600 dark:text-zinc-400"></i></div>
+                  <div><p class="font-medium text-zinc-900 dark:text-zinc-100">Dark Mode</p><p class="text-sm text-zinc-500 dark:text-zinc-400">Toggle dark theme</p></div>
+                </div>
+                <button id="toggle-dark-mode" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${isDarkMode ? 'bg-indigo-600' : 'bg-zinc-200 dark:bg-zinc-700'}">
+                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isDarkMode ? 'translate-x-6' : 'translate-x-1'}"></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Behavior</h3>
+              
+              <div class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700/50">
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-white dark:bg-zinc-800 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-700"><i data-lucide="copy-check" class="w-5 h-5 text-zinc-600 dark:text-zinc-400"></i></div>
+                  <div><p class="font-medium text-zinc-900 dark:text-zinc-100">Auto-close on Copy</p><p class="text-sm text-zinc-500 dark:text-zinc-400">Deselect prompt after copying</p></div>
+                </div>
+                <button id="toggle-auto-close" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${appSettings.autoCloseOnCopy ? 'bg-indigo-600' : 'bg-zinc-200 dark:bg-zinc-700'}">
+                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${appSettings.autoCloseOnCopy ? 'translate-x-6' : 'translate-x-1'}"></span>
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700/50">
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-white dark:bg-zinc-800 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-700"><i data-lucide="heading" class="w-5 h-5 text-zinc-600 dark:text-zinc-400"></i></div>
+                  <div><p class="font-medium text-zinc-900 dark:text-zinc-100">Include Title on Copy</p><p class="text-sm text-zinc-500 dark:text-zinc-400">Copy title along with body</p></div>
+                </div>
+                <button id="toggle-include-title" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${appSettings.includeTitleOnCopy ? 'bg-indigo-600' : 'bg-zinc-200 dark:bg-zinc-700'}">
+                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${appSettings.includeTitleOnCopy ? 'translate-x-6' : 'translate-x-1'}"></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Data Management</h3>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button id="btn-export-csv" class="flex items-center justify-center gap-2 p-4 bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700/50 transition-colors text-zinc-700 dark:text-zinc-300 font-medium">
+                  <i data-lucide="download" class="w-5 h-5"></i> Export CSV
+                </button>
+                <div class="relative">
+                  <input type="file" id="import-csv-input" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                  <button class="w-full flex items-center justify-center gap-2 p-4 bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700/50 transition-colors text-zinc-700 dark:text-zinc-300 font-medium">
+                    <i data-lucide="upload" class="w-5 h-5"></i> Import CSV
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+              <h3 class="text-sm font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider">Danger Zone</h3>
+              <div class="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-200 dark:border-red-900/30">
+                <div><p class="font-medium text-red-900 dark:text-red-200">Factory Reset</p><p class="text-sm text-red-700 dark:text-red-400">Delete all data and settings</p></div>
+                <button id="btn-factory-reset" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm shadow-red-500/20">Reset App</button>
+              </div>
+            </div>
+
+          </div>
+        `;
+        
+        content.innerHTML = html;
+        modal.appendChild(content);
+        container.appendChild(modal);
+
+        document.getElementById('btn-close-settings').onclick = () => { isSettingsModalOpen = false; renderApp(); };
+        
+        document.getElementById('toggle-dark-mode').onclick = () => {
+          isDarkMode = !isDarkMode;
+          applyTheme();
+          renderSettingsModal();
+        };
+
+        document.getElementById('toggle-auto-close').onclick = () => {
+          appSettings.autoCloseOnCopy = !appSettings.autoCloseOnCopy;
+          saveSettings();
+          renderSettingsModal();
+        };
+
+        document.getElementById('toggle-include-title').onclick = () => {
+          appSettings.includeTitleOnCopy = !appSettings.includeTitleOnCopy;
+          saveSettings();
+          renderSettingsModal();
+        };
+
+        document.getElementById('btn-export-csv').onclick = () => {
+          const headers = ['Title', 'Body', 'Tags', 'Created At'];
+          const rows = prompts.map(p => [
+            escapeCSV(p.title),
+            escapeCSV(p.body),
+            escapeCSV(p.tags?.join(', ')),
+            escapeCSV(new Date(p.createdAt).toISOString())
+          ]);
+          const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          const url = URL.createObjectURL(blob);
+          link.setAttribute('href', url);
+          link.setAttribute('download', `prompt_vault_export_${new Date().toISOString().split('T')[0]}.csv`);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          showToast('Exported successfully');
+        };
+
+        document.getElementById('import-csv-input').onchange = (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            try {
+              const text = event.target.result;
+              const rows = parseCSV(text);
+              if (rows.length < 2) throw new Error('Invalid CSV format');
+              
+              const newPrompts = rows.slice(1).map(row => {
+                if (row.length < 2) return null;
+                return {
+                  id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                  title: row[0] || 'Untitled',
+                  body: row[1] || '',
+                  tags: row[2] ? row[2].split(',').map(t => t.trim()).filter(Boolean) : [],
+                  createdAt: row[3] ? new Date(row[3]).getTime() : Date.now(),
+                  lastAccessedAt: Date.now()
+                };
+              }).filter(Boolean);
+
+              if (newPrompts.length > 0) {
+                prompts = [...newPrompts, ...prompts];
+                savePrompts();
+                showToast(`Imported ${newPrompts.length} prompts`);
+                isSettingsModalOpen = false;
+                renderApp();
+              } else {
+                throw new Error('No valid prompts found');
+              }
+            } catch (err) {
+              alert('Failed to import CSV: ' + err.message);
+            }
+          };
+          reader.readAsText(file);
+        };
+
+        document.getElementById('btn-factory-reset').onclick = () => {
+          if (confirm('Are you absolutely sure? This will delete ALL prompts, history, and settings. This action cannot be undone.')) {
+            localStorage.removeItem('prompt_vault_data');
+            localStorage.removeItem('prompt_vault_history');
+            localStorage.removeItem('prompt_vault_settings');
+            localStorage.removeItem('prompt_vault_theme');
+            window.location.reload();
+          }
+        };
+
+        lucide.createIcons();
+      };
+
+      document.getElementById('nav-settings').onclick = () => {
+        isSettingsModalOpen = true;
+        renderSettingsModal();
+      };
+      
+      // Initial render of settings modal if open (it shouldn't be on load, but just in case)
+      if (isSettingsModalOpen) renderSettingsModal();
+    });
+  </script>
+</body>
+</html>
