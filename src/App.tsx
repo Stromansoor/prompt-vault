@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Copy, Pencil, Trash2, Plus, Search, ChevronLeft, Check, X, Tag, Menu, RotateCcw, AlertCircle, AlertTriangle, Download, Upload, Star, Clock, History, MessageSquare, ArrowUpDown, Settings } from 'lucide-react';
+import { Copy, Pencil, Trash2, Plus, Search, ChevronLeft, Check, X, Tag, Menu, RotateCcw, AlertCircle, AlertTriangle, Download, Upload, Star, Clock, History, MessageSquare, ArrowUpDown, Settings, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 
@@ -20,6 +20,7 @@ interface Prompt {
   lastAccessedAt?: number;
   isDeleted?: boolean;
   isFavorite?: boolean;
+  usageCount?: number;
   versions?: PromptVersion[];
 }
 
@@ -83,11 +84,28 @@ const parseCSV = (text: string) => {
   return rows;
 };
 
-const renderWithVariables = (text: string) => {
+const renderWithVariables = (text: string, syntax: string = '[Square Brackets]') => {
   if (!text) return null;
-  const parts = text.split(/(\[[^\]]+\])/g);
+  let regex;
+  let isMatch = (part: string) => false;
+  switch (syntax) {
+    case '{Curly Braces}': 
+      regex = /(\{[^}]+\})/g; 
+      isMatch = (part) => part.startsWith('{') && part.endsWith('}') && !part.startsWith('{{');
+      break;
+    case '{{Mustache}}': 
+      regex = /(\{\{[^}]+\}\})/g; 
+      isMatch = (part) => part.startsWith('{{') && part.endsWith('}}');
+      break;
+    case '[Square Brackets]':
+    default: 
+      regex = /(\[[^\]]+\])/g; 
+      isMatch = (part) => part.startsWith('[') && part.endsWith(']');
+      break;
+  }
+  const parts = text.split(regex);
   return parts.map((part, i) => {
-    if (part.startsWith('[') && part.endsWith(']')) {
+    if (isMatch(part)) {
       return (
         <span key={i} className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 px-1 rounded font-medium">
           {part}
@@ -103,13 +121,15 @@ function SwipeablePromptCard({
   selectedId,
   handleSelectPrompt,
   confirmDelete,
-  handleCopy
+  handleCopy,
+  variableSyntax
 }: {
   prompt: Prompt;
   selectedId: string | null;
   handleSelectPrompt: (id: string) => void;
   confirmDelete: (id: string) => void;
   handleCopy: (prompt: Prompt) => void;
+  variableSyntax?: string;
 }) {
   const [offsetX, setOffsetX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -174,7 +194,7 @@ function SwipeablePromptCard({
           <span className="truncate">{prompt.title}</span>
         </h3>
         <p className={`text-sm line-clamp-2 leading-relaxed ${selectedId === prompt.id ? 'text-blue-800/80 dark:text-blue-200/80' : 'text-slate-500 dark:text-slate-400'}`}>
-          {renderWithVariables(prompt.body)}
+          {renderWithVariables(prompt.body, variableSyntax)}
         </p>
         <div className="flex items-center justify-between mt-4 gap-2">
           <div className="flex gap-2 overflow-hidden flex-1">
@@ -228,8 +248,13 @@ export default function App() {
   });
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setVariableValues({});
+  }, [selectedId]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortOption, setSortOption] = useState<'title-asc' | 'title-desc' | 'created-desc' | 'created-asc' | 'accessed-desc'>('created-desc');
+  const [sortOption, setSortOption] = useState<'title-asc' | 'title-desc' | 'created-desc' | 'created-asc' | 'accessed-desc' | 'usage-desc'>('created-desc');
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'all' | 'favorites' | 'deleted' | 'history'>('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -265,10 +290,21 @@ export default function App() {
     const saved = localStorage.getItem('prompt_vault_settings');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          autoCloseOnCopy: parsed.autoCloseOnCopy || false,
+          includeTitleOnCopy: parsed.includeTitleOnCopy || false,
+          variableSyntax: parsed.variableSyntax || '[Square Brackets]',
+          preferredAI: parsed.preferredAI || 'ChatGPT'
+        };
       } catch (e) {}
     }
-    return { autoCloseOnCopy: false, includeTitleOnCopy: false };
+    return { 
+      autoCloseOnCopy: false, 
+      includeTitleOnCopy: false,
+      variableSyntax: '[Square Brackets]',
+      preferredAI: 'ChatGPT'
+    };
   });
 
   useEffect(() => {
@@ -425,6 +461,7 @@ export default function App() {
           case 'created-asc': return a.createdAt - b.createdAt;
           case 'created-desc': return b.createdAt - a.createdAt;
           case 'accessed-desc': return (b.lastAccessedAt || 0) - (a.lastAccessedAt || 0);
+          case 'usage-desc': return (b.usageCount || 0) - (a.usageCount || 0);
           default: return b.createdAt - a.createdAt;
         }
       });
@@ -449,20 +486,62 @@ export default function App() {
     }
   };
 
-  const handleCopy = async (prompt: Prompt) => {
+  const getVariableRegex = () => {
+    switch (appSettings.variableSyntax) {
+      case '{Curly Braces}': return /\{([^}]+)\}/g;
+      case '{{Mustache}}': return /\{\{([^}]+)\}\}/g;
+      case '[Square Brackets]':
+      default: return /\[([^\]]+)\]/g;
+    }
+  };
+
+  const extractVariables = (text: string) => {
+    if (!text) return [];
+    const regex = getVariableRegex();
+    const matches = Array.from(text.matchAll(regex));
+    const vars = matches.map(m => m[1]);
+    return [...new Set(vars)];
+  };
+
+  const compilePrompt = (prompt: Prompt) => {
+    if (!prompt) return '';
+    let compiled = prompt.body;
+    const regex = getVariableRegex();
+    compiled = compiled.replace(regex, (match, varName) => {
+      return variableValues[varName] || match;
+    });
+    return compiled;
+  };
+
+  const handleCopy = async (prompt: Prompt, compiledBody?: string) => {
     try {
       const textToCopy = appSettings.includeTitleOnCopy 
-        ? `${prompt.title}\n\n${prompt.body}`
-        : prompt.body;
+        ? `${prompt.title}\n\n${compiledBody || prompt.body}`
+        : (compiledBody || prompt.body);
       await navigator.clipboard.writeText(textToCopy);
       showToast('Copied to Clipboard!');
       
+      setPrompts(prev => prev.map(p => p.id === prompt.id ? { ...p, usageCount: (p.usageCount || 0) + 1 } : p));
+
       if (appSettings.autoCloseOnCopy) {
         handleSelectPrompt(null);
       }
     } catch (err) {
       showToast('Failed to copy');
     }
+  };
+
+  const handleRun = async (prompt: Prompt, compiledBody?: string) => {
+    await handleCopy(prompt, compiledBody);
+    let url = 'https://chatgpt.com/';
+    switch (appSettings.preferredAI) {
+      case 'Gemini': url = 'https://gemini.google.com/app'; break;
+      case 'Claude': url = 'https://claude.ai/new'; break;
+      case 'Perplexity': url = 'https://www.perplexity.ai/'; break;
+      case 'ChatGPT':
+      default: url = 'https://chatgpt.com/'; break;
+    }
+    window.open(url, '_blank');
   };
 
   const confirmDelete = (id: string) => {
@@ -711,6 +790,8 @@ export default function App() {
   else if (viewMode === 'history') headerText = 'History';
   else if (selectedTags.length > 0) headerText = selectedTags.join(', ');
 
+  const variables = selectedPrompt ? extractVariables(selectedPrompt.body) : [];
+
   return (
     <div className="flex h-screen w-full bg-[#f8fafd] dark:bg-[#131314] text-slate-800 dark:text-slate-200 font-sans overflow-hidden selection:bg-blue-500/30">
       
@@ -858,6 +939,7 @@ export default function App() {
                         { value: 'created-desc', label: 'Newest First' },
                         { value: 'created-asc', label: 'Oldest First' },
                         { value: 'accessed-desc', label: 'Recently Used' },
+                        { value: 'usage-desc', label: 'Most Used' },
                         { value: 'title-asc', label: 'Title (A-Z)' },
                         { value: 'title-desc', label: 'Title (Z-A)' },
                       ].map((option) => (
@@ -930,6 +1012,7 @@ export default function App() {
                 handleSelectPrompt={handleSelectPrompt}
                 confirmDelete={confirmDelete}
                 handleCopy={handleCopy}
+                variableSyntax={appSettings.variableSyntax}
               />
             ))
           )}
@@ -1001,11 +1084,18 @@ export default function App() {
                       <Trash2 size={20} />
                     </button>
                     <button 
-                      onClick={() => handleCopy(selectedPrompt)}
+                      onClick={() => handleCopy(selectedPrompt, compilePrompt(selectedPrompt))}
                       className="flex items-center gap-2 px-5 py-3 bg-[#c2e7ff] hover:bg-[#b1d6ee] text-[#001d35] dark:bg-[#004a77] dark:hover:bg-[#005c94] dark:text-[#c2e7ff] font-medium rounded-full transition-colors active:scale-95 ml-2 shadow-sm"
                     >
                       <Copy size={20} className="stroke-[2.5]" />
                       <span className="hidden sm:inline">Copy</span>
+                    </button>
+                    <button 
+                      onClick={() => handleRun(selectedPrompt, compilePrompt(selectedPrompt))}
+                      className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-full transition-colors active:scale-95 ml-2 shadow-sm"
+                    >
+                      <ExternalLink size={20} className="stroke-[2.5]" />
+                      <span className="hidden sm:inline">Run</span>
                     </button>
                   </>
                 )}
@@ -1013,6 +1103,25 @@ export default function App() {
             </div>
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:px-8 pb-12">
               <div className="max-w-4xl mx-auto">
+                {variables.length > 0 && (
+                  <div className="mb-8 p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700/50">
+                    <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">Variables</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {variables.map(v => (
+                        <div key={v}>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{v}</label>
+                          <input
+                            type="text"
+                            value={variableValues[v] || ''}
+                            onChange={(e) => setVariableValues(prev => ({ ...prev, [v]: e.target.value }))}
+                            className="w-full bg-white dark:bg-[#1e1f20] rounded-xl py-2.5 px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700"
+                            placeholder={`Enter ${v}...`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {selectedPrompt.tags && selectedPrompt.tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-8">
                     {selectedPrompt.tags.map(tag => (
@@ -1025,7 +1134,7 @@ export default function App() {
                 )}
                 <div className="bg-transparent rounded-[2rem] p-6 sm:p-8 md:p-10">
                   <div className="prose dark:prose-invert prose-slate max-w-none prose-p:leading-relaxed prose-pre:bg-slate-50 dark:prose-pre:bg-slate-900 prose-pre:border prose-pre:border-slate-200 dark:prose-pre:border-slate-800 prose-a:text-blue-600 dark:prose-a:text-blue-400 select-text">
-                    <Markdown>{selectedPrompt.body}</Markdown>
+                    <Markdown>{compilePrompt(selectedPrompt)}</Markdown>
                   </div>
                 </div>
               </div>
@@ -1352,6 +1461,35 @@ export default function App() {
                     >
                       <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${appSettings.includeTitleOnCopy ? 'translate-x-6' : 'translate-x-1'}`} />
                     </button>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Execution</h4>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-800 dark:text-slate-200 font-medium">Variable Syntax</span>
+                    <select
+                      value={appSettings.variableSyntax}
+                      onChange={(e) => setAppSettings(prev => ({ ...prev, variableSyntax: e.target.value }))}
+                      className="bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-1.5 text-sm border-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="[Square Brackets]">[Square Brackets]</option>
+                      <option value="{Curly Braces}">{'{Curly Braces}'}</option>
+                      <option value="{{Mustache}}">{'{{Mustache}}'}</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-800 dark:text-slate-200 font-medium">Preferred AI</span>
+                    <select
+                      value={appSettings.preferredAI}
+                      onChange={(e) => setAppSettings(prev => ({ ...prev, preferredAI: e.target.value }))}
+                      className="bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-1.5 text-sm border-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="ChatGPT">ChatGPT</option>
+                      <option value="Gemini">Gemini</option>
+                      <option value="Claude">Claude</option>
+                      <option value="Perplexity">Perplexity</option>
+                    </select>
                   </div>
                 </div>
 
